@@ -1954,7 +1954,7 @@ void main() {
   bool glass = part > 0.5 && mg.b < 0.5;
   float t = uTime;
   // The eye (V), and the same leaning further (Ve) for what the light does, so a phone's small tilt shows in it. (The
-  // window's own lean, WINTILT, is already twice the board's, so half as far again is enough.)
+  // window's own lean, WINTILT, is already nearly twice the board's, so half as far again is enough.)
   vec3 V = normalize(vec3(T, 1.0)), Ve = normalize(vec3(T * 1.5, 1.0));
   // Light from the room, in front of the glass, drifting slowly.
   vec3 L = normalize(vec3(0.5 * sin(t * 0.07), -0.55 + 0.1 * cos(t * 0.05), 0.72)), He = normalize(L + Ve);
@@ -2292,7 +2292,9 @@ void main() {
   // a few degrees, a short drag) gets most of the way: about half the turn at a third of the lean. A corner leans as
   // far each way as a side. `room`: how far, at most, its canvas reaches past it across and down (CSS px), so a side
   // turned toward the eye can come out a little past where the flat window was.
-  const WINTILT = { turn: [22, 15], deg: 32, gain: 1.6, persp: 2.2, room: [14, 8] };
+  // (3DM update, after a playtest found it turned too much: a quarter less turn, 22 and 15 degrees before, and the
+  // eye 28 degrees, 32 before)
+  const WINTILT = { turn: [16, 11], deg: 28, gain: 1.6, persp: 2.2, room: [14, 8] };
   // The window's lean now, each way -1..1: the view's lean (held to a circle, so the board's corners lean no further
   // than its sides) opened out to a square, then eased by the gain. The slow sway when nothing is touched moves it half
   // as far, so a window left alone rocks gently and the phone or a finger turns it well. None with reduced motion.
@@ -2931,8 +2933,8 @@ void main() {
       painted.push({ x, y, sz, rot, al });
     }
     g.globalAlpha = 1;
-    // (glinting as the play screen's do; a glint's rays stay well clear of the window and the words)
-    stillGlitter(g, painted, 5107 + P.first, (s) => !(s.x > wx - 90 && s.x < wx + ww + 90 && s.y < wy + wh + 60) && s.y < wy + wh - 50);
+    // (twinkling as the play screen's do, at one moment)
+    stillGlitter(g, painted, 5107 + P.first);
     // The window, with the same glass, sun and lead as in the game.
     paintGlass(g, P, v, wx, wy, ww, wh, 2600, { key: 'share', scale: 2, layer: progressLayer(P), still: true });
     // Its name, a rule with a lozenge, and a line under it.
@@ -4060,8 +4062,8 @@ void main() {
       painted.push({ x, y, sz, rot, al });
     }
     g.globalAlpha = 1;
-    // (glinting as the play screen's do; a glint's rays stay well clear of the rose and the words)
-    stillGlitter(g, painted, 1977 + n, (s) => Math.hypot(s.x - cx, s.y - cy) > R + 80 && s.y < cy + R - 30);
+    // (twinkling as the play screen's do, at one moment)
+    stillGlitter(g, painted, 1977 + n);
     const info = paintMonthRose(g, cx, cy, R, n, false);
     const word = (k) => ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
       'twenty-one', 'twenty-two', 'twenty-three', 'twenty-four', 'twenty-five', 'twenty-six', 'twenty-seven', 'twenty-eight', 'twenty-nine', 'thirty', 'thirty-one'][k] || String(k);
@@ -4586,67 +4588,47 @@ void main() {
     for (let i = 0; i < 10; i++) { const rad = i % 2 ? r * 0.42 : r, an = a + (i * Math.PI) / 5; g.lineTo(x + Math.cos(an) * rad, y + Math.sin(an) * rad); }
     g.closePath(); g.fill();
   }
-  // A glint on a gold star: a crisp pale point with thin rays, as gilding throws one when the light catches it (and
-  // as a bright star seems to, through the eye's lashes). Four long rays and four short ones between them, each
-  // tapering to nothing and fading toward its tip, laid on (added) so the point burns pale gold-white. `R` is the
-  // star's size, `e` how far through its flash (0 to 1: the rays grow with it), `a` the cross's turn. Drawn by the
-  // twinkling wall and on the still wall of the pictures made for posting.
-  function glint(g, x, y, R, e, a) {
-    if (!(e >= 0.02)) return; // (nor when e is not a number)
-    const L = R * (1.5 + 2.1 * e), w = Math.max(0.7, R * 0.11) * (0.6 + 0.4 * e);
-    const ray = (l, hw) => { g.beginPath(); g.moveTo(0, -l); g.lineTo(hw, 0); g.lineTo(0, l); g.lineTo(-hw, 0); g.closePath(); g.fill(); };
-    g.save();
-    g.globalCompositeOperation = 'lighter';
-    g.translate(x, y); g.rotate(a);
-    const rg = g.createRadialGradient(0, 0, 0, 0, 0, L);
-    rg.addColorStop(0, `rgba(255,252,242,${e})`); rg.addColorStop(0.22, `rgba(255,244,210,${0.72 * e})`); rg.addColorStop(0.55, `rgba(255,236,192,${0.3 * e})`); rg.addColorStop(1, 'rgba(255,234,186,0)');
-    g.fillStyle = rg;
-    ray(L, w); g.rotate(Math.PI / 2); ray(L, w);
-    const a0 = g.globalAlpha;
-    g.globalAlpha = a0 * 0.5; g.rotate(Math.PI / 4); ray(L * 0.48, w * 0.8); g.rotate(Math.PI / 2); ray(L * 0.48, w * 0.8);
-    // the point itself: a small soft round of light on the star's middle
-    const cg = g.createRadialGradient(0, 0, 0, 0, 0, R * 1.2);
-    cg.addColorStop(0, `rgba(255,250,236,${0.85 * e})`); cg.addColorStop(0.4, `rgba(255,236,192,${0.32 * e})`); cg.addColorStop(1, 'rgba(255,230,180,0)');
-    g.globalAlpha = a0; g.fillStyle = cg; g.fillRect(-R * 1.2, -R * 1.2, R * 2.4, R * 2.4);
-    g.restore();
+  // A star's twinkle at time T (s), timed exactly as the night's stars seen through the board's empty panes are (the
+  // board's shader, "Its stars twinkle as real ones do": keep the two in step): slow swells of 4-8 s and 1.8-3 s, a
+  // light flicker of 1.9-2.9 a second, and a flare (f, 0 to 1) when a quick pulse of 1.2-1.7 s meets the crest of a
+  // slow one of 13-22 s, so each star flares now and then for about a tenth of a second. `r` holds the star's four
+  // numbers (0 to 1). k is how far its light stands from its mean: about -0.6 to +0.6, and up to about 1.8 in a flare.
+  function starTwinkle(r, T) {
+    const sw = 0.45 * Math.sin(T * (0.8 + 0.7 * r[0]) + TAU * r[1]) + 0.3 * Math.sin(T * (2.1 + 1.4 * r[1]) + TAU * r[2]) + 0.25 * Math.sin(T * (12 + 6 * r[2]) + TAU * r[3]);
+    const f = Math.pow(Math.max(Math.sin(T * (3.6 + 1.6 * r[3]) + TAU * r[0]), 0), 16) * Math.pow(Math.max(Math.sin(T * (0.28 + 0.2 * r[2]) + TAU * r[3]), 0), 8);
+    return 0.62 * sw + 1.2 * f;
   }
-  // The still wall of a picture made for posting glitters as the play screen's does at one moment: about a third
-  // of its stars caught brighter and paler (the pale star and a soft halo laid over the gold), and a few of the
-  // biggest, well apart, caught mid-glint. `list` holds the stars as painted ({ x, y, sz, rot, al }); `keep(s)` says
-  // whether a star sits far enough from the picture's window and words to glint.
-  function stillGlitter(g, list, seed, keep) {
-    const r = mulberry32(seed), pale = (s, a) => {
+  // How much of a gold star's pale self (the pale star on its soft halo) is laid over it at twinkle k: a little at
+  // a swell's crest (about a fifth), and at most about half in a flare. And how far it dims below its mean: to a
+  // little over half at the deepest. So a wall star's light swings about as far, for its size, as a pane's star does.
+  const starPale = (k, al) => Math.min(0.55, Math.max(0, k) * (0.32 + 0.22 * al));
+  const starDim = (k) => 1 + 0.7 * Math.max(-0.62, Math.min(0, k));
+  // The still wall of a picture made for posting is the play screen's wall at one moment of its twinkle: each star
+  // brighter and paler as far as it then stands above its mean (no star is dimmed: the gold is already painted).
+  // `list` holds the stars as painted ({ x, y, sz, rot, al }).
+  function stillGlitter(g, list, seed) {
+    const r = mulberry32(seed), T = 30 + 300 * r();
+    g.save();
+    for (const s of list) {
+      const a = starPale(starTwinkle([r(), r(), r(), r()], T), s.al);
+      if (a < 0.004) continue;
       const hg = g.createRadialGradient(s.x, s.y, 0, s.x, s.y, s.sz * 2);
       hg.addColorStop(0, 'rgba(255,236,190,0.42)'); hg.addColorStop(0.45, 'rgba(255,226,170,0.12)'); hg.addColorStop(1, 'rgba(255,226,170,0)');
       g.globalAlpha = a; g.fillStyle = hg; g.fillRect(s.x - s.sz * 2, s.y - s.sz * 2, s.sz * 4, s.sz * 4);
       g.fillStyle = '#fff0c8'; star(g, s.x, s.y, s.sz, s.rot);
-    };
-    g.save();
-    for (const s of list) { const v = r(); if (v < 0.33) pale(s, (0.25 + 1.4 * v) * s.al); }
-    const picked = [];
-    for (const s of [...list].sort((a, b) => b.sz * b.al - a.sz * a.al)) {
-      if (picked.length >= 5) break;
-      if (!keep(s) || Math.min(s.x, s.y, g.canvas.width - s.x, g.canvas.height - s.y) < 80 || picked.some((p) => Math.hypot(p.x - s.x, p.y - s.y) < 170)) continue;
-      picked.push(s); pale(s, 0.85); g.globalAlpha = 1; glint(g, s.x, s.y, s.sz, 0.7 + 0.3 * r(), -0.15 + 0.3 * r());
     }
     g.restore();
   }
-  // The stars on the wall twinkle like real ones, each in its own time, never in step with another: a slow swell
-  // (two slow waves of its own periods and phases) and on it the quick flicker of starlight through moving air,
-  // about ten changes a second, deeper at some moments than others (a third slow wave sets how deep). In a trough a
-  // star dims to about six tenths; toward a peak the pale star and its soft halo are laid over it, so it brightens
-  // and whitens. And now and then one star glints (see glint): its rays grow and fade within about half a second,
-  // one star after another across the wall, a fresh one every sixth to third of a second, so one to three glint at
-  // any moment, never the same star twice running nor one beside a star still glinting. They live on a small canvas
-  // of their own under the play canvas (the stonework's cache no longer holds them), redrawn about thirty times a
-  // second from two small pictures of each star made once per layout (and kept while the layout puts the stars
-  // where they were), and not while a card covers the screen or the page is hidden. With reduced motion they are
-  // painted into the stonework, still, as before.
+  // The stars on the wall twinkle as quietly as the night's stars through the board's empty panes, and in the same
+  // time (starTwinkle): each in its own time, never in step with another, a slow swell, a light flicker on it, and
+  // now and then a flare for a moment. Below its mean a star dims (to a little over half); above it the pale star and
+  // its soft halo are laid over it (starPale), so it brightens and whitens, most in a flare. No rays. They live on a
+  // small canvas of their own under the play canvas (the stonework's cache no longer holds them), redrawn about
+  // twenty-five times a second from two small pictures of each star made once per layout (and kept while the layout
+  // puts the stars where they were), and not while a card covers the screen or the page is hidden. With reduced
+  // motion they are painted into the stonework, still, as before.
   let wallStars = null;
   const starCv = $('wallStars');
-  // Smooth noise along time for the flicker: a value between -1 and 1 at each whole step, eased between them.
-  const flickH = (i) => { let x = Math.imul(i | 0, 0x9e3779b1); x ^= x >>> 15; x = Math.imul(x, 0x85ebca77); x ^= x >>> 13; return (x >>> 0) / 2147483648 - 1; };
-  const flick = (x) => { const i = Math.floor(x), f = x - i, a = flickH(i); return a + (flickH(i + 1) - a) * f * f * (3 - 2 * f); };
   function twinkleSprites(list) {
     if (!list.length) { starCv.hidden = true; return null; }
     const key = [W, H, dpr, ...list.map((s) => `${s.x.toFixed(2)},${s.y.toFixed(2)},${s.sz.toFixed(2)},${s.rot.toFixed(3)},${s.al.toFixed(3)}`)].join('|');
@@ -4660,8 +4642,7 @@ void main() {
     list.forEach((s, i) => {
       // its cell is laid on whole device pixels, with the star at the same fraction of a pixel as it was painted
       s.dx = Math.floor(s.x * dpr) - C / 2; s.dy = Math.floor(s.y * dpr) - C / 2;
-      // (and the canvas reaches down past a glint's lowest ray)
-      bottom = Math.max(bottom, s.dy + C, Math.ceil((s.y + s.sz * 3.8) * dpr));
+      bottom = Math.max(bottom, s.dy + C);
       const ox = s.x * dpr - s.dx, oy = s.y * dpr - s.dy;
       // the gold star, and in the next cell the pale one on its soft halo (each wholly inside its cell)
       s.sx = ((2 * i) % cols) * C; s.sy = Math.floor((2 * i) / cols) * C; s.hx = ((2 * i + 1) % cols) * C; s.hy = Math.floor((2 * i + 1) / cols) * C;
@@ -4670,90 +4651,27 @@ void main() {
       hg.addColorStop(0, 'rgba(255,236,190,0.42)'); hg.addColorStop(0.45, 'rgba(255,226,170,0.12)'); hg.addColorStop(1, 'rgba(255,226,170,0)');
       g.fillStyle = hg; g.fillRect(s.hx, s.hy, C, C);
       g.fillStyle = '#fff0c8'; star(g, s.hx + ox, s.hy + oy, s.sz * dpr, s.rot);
-      // two slow waves, of 2.6-6.4 s and 1.7-4.1 s, at their own phases; and how far it swings
-      s.w1 = TAU / (2.6 + 3.8 * rnd()); s.w2 = TAU / (1.7 + 2.4 * rnd()); s.p1 = rnd() * TAU; s.p2 = rnd() * TAU; s.amp = 0.7 + 0.6 * rnd();
-      // the flicker: 10-14 steps a second, from a place of its own along the noise; how deep it runs comes and
-      // goes on a wave of 3-7 s
-      s.fr = 10 + 4 * rnd(); s.fo = Math.floor(rnd() * 1e6); s.w3 = TAU / (3 + 4 * rnd()); s.p3 = rnd() * TAU;
-      // (a glint may light a star whose rays stay clear of the corner buttons)
-      const reach = 3.8 * s.sz;
-      s.canGlint = !(s.y < 52 + reach && (s.x < 56 + reach || s.x > W - 100 - reach));
-      s.ge = 0;
+      // its four numbers, for its own time (starTwinkle)
+      s.tw = [rnd(), rnd(), rnd(), rnd()];
     });
     g.globalAlpha = 1;
-    // The glint, drawn once at its height for the biggest star and at two smaller sizes, so a glint is never
-    // shrunk to less than about six tenths of the picture it is drawn from (its thin rays stay crisp).
-    const GR = big * dpr, sizes = [1, 0.62, 0.38].map((f) => {
-      const R = GR * f, half = Math.ceil(R * 3.7) + 2, c = cvs(2 * half, 2 * half);
-      glint(c.getContext('2d'), half, half, R, 1, 0);
-      return { R, half, c };
-    });
     starCv.width = Math.max(1, Math.round(W * dpr)); starCv.height = Math.max(1, Math.min(Math.round(H * dpr), bottom + 2));
     starCv.style.width = `${W}px`; starCv.style.height = `${starCv.height / dpr}px`;
     starCv.hidden = false;
-    return { key, cv, C, list, sizes, g: starCv.getContext('2d'), last: -1e9, sp: [], next: 0, recent: [], rnd: mulberry32(7741) };
-  }
-  // The next star to glint: one not glinting nor among the last eight, at least 70 px from any star glinting now
-  // (or failing that, any free one), the bigger and brighter the likelier.
-  function nextGlint(S) {
-    const busy = S.sp.map((q) => S.list[q.i]);
-    for (const far of [70, 0]) {
-      let sum = 0;
-      const w = S.list.map((st, i) => {
-        if (!st.canGlint || S.recent.includes(i) || busy.some((b) => Math.hypot(b.x - st.x, b.y - st.y) < Math.max(far, 1))) return 0;
-        const v = st.sz * st.al; sum += v * v; return v * v;
-      });
-      if (sum <= 0) continue;
-      let r = S.rnd() * sum;
-      for (let i = 0; i < w.length; i++) { r -= w[i]; if (w[i] > 0 && r <= 0) return i; }
-    }
-    return -1;
+    return { key, cv, C, list, g: starCv.getContext('2d'), last: -1e9 };
   }
   function wallStarsTick(t) {
     const S = wallStars;
-    if (!S || document.hidden || t - S.last < 28 || (anyOverlay() && S.last > -1e9)) return;
-    const s = t / 1000, C = S.C, g = S.g;
-    // (back after a card, a hidden page or a stall: the glints start afresh rather than all at once)
-    if (t - S.last > 1000) { S.sp = []; S.next = s; }
+    if (!S || document.hidden || t - S.last < 38 || (anyOverlay() && S.last > -1e9)) return;
     S.last = t;
-    // Glints: those over leave; new ones start on time; each one's flash rises in a fifth of its life and fades
-    // over the rest.
-    S.sp = S.sp.filter((q) => s - q.t0 < q.dur);
-    while (s >= S.next) {
-      const dur = 0.38 + 0.24 * S.rnd(), i = s - S.next < dur ? nextGlint(S) : -1; // (one already over after a slow frame is skipped)
-      if (i >= 0) { S.sp.push({ i, t0: S.next, dur, a: -0.15 + 0.3 * S.rnd(), e: 0 }); S.recent.push(i); if (S.recent.length > 8) S.recent.shift(); }
-      S.next += 0.17 + 0.13 * S.rnd();
-    }
-    for (const q of S.sp) {
-      const u = Math.min(1, Math.max(0, (s - q.t0) / q.dur)), k = u / 0.2;
-      q.e = u < 0.2 ? k * k * (3 - 2 * k) : Math.pow(1 - (u - 0.2) / 0.8, 1.5);
-      S.list[q.i].ge = q.e;
-    }
+    const T = t / 1000, C = S.C, g = S.g;
     g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over'; g.clearRect(0, 0, starCv.width, starCv.height);
     for (const st of S.list) {
-      const sw = 0.62 * Math.sin(s * st.w1 + st.p1) + 0.38 * Math.sin(s * st.w2 + st.p2);
-      const x = s * st.fr + st.fo, fl = 0.65 * flick(x) + 0.35 * flick(x * 2.3 + 17.5);
-      const k = (0.45 * sw + (0.95 + 0.4 * Math.sin(s * st.w3 + st.p3)) * fl) * st.amp;
-      // dimmer, down to about six tenths (a); brighter, the pale star and its halo laid over it, up to seven tenths,
-      // and nine in a glint (p)
-      const a = st.al * (1 + 0.27 * Math.max(-1.5, Math.min(0, k)));
-      const p = Math.max(k > 0 ? Math.min(0.7, (0.15 + 0.35 * st.al) * Math.pow(Math.min(k, 1.5), 1.3)) : 0, 0.9 * st.ge);
-      st.ge = 0;
-      g.globalAlpha = a; g.drawImage(S.cv, st.sx, st.sy, C, C, st.dx, st.dy, C, C);
+      const k = starTwinkle(st.tw, T), p = starPale(k, st.al);
+      g.globalAlpha = st.al * starDim(k); g.drawImage(S.cv, st.sx, st.sy, C, C, st.dx, st.dy, C, C);
       if (p > 0.004) { g.globalAlpha = p; g.drawImage(S.cv, st.hx, st.hy, C, C, st.dx, st.dy, C, C); }
     }
-    // the glints over the stars (their rays may cross a neighbour), turning a little as they fade
-    if (S.sp.length) {
-      g.globalCompositeOperation = 'lighter';
-      for (const q of S.sp) {
-        const st = S.list[q.i], R = st.sz * dpr * (0.6 + 0.4 * q.e), u = (s - q.t0) / q.dur, an = q.a + 0.25 * u;
-        const G = S.sizes.reduce((b, z) => (z.R >= R * 0.999 && z.R < b.R ? z : b), S.sizes[0]), f = R / G.R;
-        g.setTransform(f * Math.cos(an), f * Math.sin(an), -f * Math.sin(an), f * Math.cos(an), st.x * dpr, st.y * dpr);
-        g.globalAlpha = Math.min(1, q.e);
-        g.drawImage(G.c, -G.half, -G.half);
-      }
-      g.setTransform(1, 0, 0, 1, 0, 0); g.globalCompositeOperation = 'source-over';
-    }
+    g.globalAlpha = 1;
   }
   // The mockup's cross-sections swept along the frame. `at(d)` gives the colour d units outside the glass
   // edge; the arch's section starts 5u further out than the jamb's, so their painted lines meet at the
