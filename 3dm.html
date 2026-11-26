@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Shift</title>
 <meta name="theme-color" content="#06142f">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -192,8 +192,11 @@ svg.i { width: 22px; height: 22px; flex: none; display: block; }
 .picbtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .card.picview { width: min(440px, 100%); gap: 10px; }
 .card.picview canvas.art, #wonArt, #introArt { border-radius: 6px; }
-/* A finger on a window's picture turns it to the light, so it does not scroll the card. */
+/* A finger on a window's picture turns it to the light, so it does not scroll the card. With reduced motion it does
+   not turn, so a finger scrolls the card up and down, but two fingers on the picture view's window still zoom it (and
+   once zoomed in, a finger moves it: see picClamp). */
 @media (prefers-reduced-motion: no-preference) { #wonArt, #picArt, #introArt { touch-action: none; } }
+@media (prefers-reduced-motion: reduce) { #picArt { touch-action: pan-y; } }
 /* The win reveal: only the window shows while the suns fly into it; then the rest fades in and the window rises. */
 .card > * { transition: opacity 0.5s ease; }
 .card.reveal { overflow: hidden; }
@@ -1866,7 +1869,7 @@ precision mediump float;
 #endif
 uniform sampler2D uPhoto, uMap, uAux, uLit, uPrev, uKinds, uSdf, uGold;
 uniform vec2 uSize, uSun, uEdge;
-uniform vec4 uView, uWin, uTilt, uGeo, uRest, uA, uB, uC, uSpark;
+uniform vec4 uView, uFull, uWin, uTilt, uGeo, uRest, uA, uB, uC, uSpark;
 uniform mat3 uTurn;
 varying vec2 vUv;
 // uTilt: the view's slant (tangents across and down), picture px per output px, 1 when the window is drawn solid.
@@ -2164,12 +2167,13 @@ void main() {
     if (!glass) c = vec3(0.0);
     // It is drawn larger and softened (a pixel of it covers four of the card's, and a third-size copy of it twelve),
     // so near the window's outside it would spread past the frame onto the card: there it is left out. (Eight ways
-    // round, as far as that spread; past the edges of what is drawn counts as outside.)
+    // round, as far as that spread; past the edges of the whole view counts as outside: uFull, the same as uView
+    // unless zoomed in, when the glass past the edges of the part drawn is still glass.)
     if (max(c.r, max(c.g, c.b)) > 0.0) {
       float r = 3.5 * uStep;
       for (int i = 0; i < 8; i++) {
         float an = float(i) * 0.7854;
-        vec2 q = p + vec2(cos(an), sin(an)) * r, qv = (q - uView.xy) / uView.zw;
+        vec2 q = p + vec2(cos(an), sin(an)) * r, qv = (q - uFull.xy) / uFull.zw;
         vec4 mq = texture2D(uMap, q / uSize);
         if ((pid(mq.r) < 0.5 && mq.b < 0.5) || qv.x < 0.0 || qv.y < 0.0 || qv.x > 1.0 || qv.y > 1.0) c = vec3(0.0);
       }
@@ -2245,7 +2249,7 @@ void main() {
       const a = gl.getAttribLocation(glProg, 'a');
       gl.enableVertexAttribArray(a); gl.vertexAttribPointer(a, 2, gl.FLOAT, false, 0, 0);
       glU = {};
-      for (const n of ['uPhoto', 'uMap', 'uAux', 'uLit', 'uPrev', 'uKinds', 'uSdf', 'uGold', 'uSize', 'uSun', 'uView', 'uWin', 'uTilt', 'uGeo', 'uRest', 'uA', 'uB', 'uC', 'uTurn', 'uEdge', 'uSpark']) glU[n] = gl.getUniformLocation(glProg, n);
+      for (const n of ['uPhoto', 'uMap', 'uAux', 'uLit', 'uPrev', 'uKinds', 'uSdf', 'uGold', 'uSize', 'uSun', 'uView', 'uFull', 'uWin', 'uTilt', 'uGeo', 'uRest', 'uA', 'uB', 'uC', 'uTurn', 'uEdge', 'uSpark']) glU[n] = gl.getUniformLocation(glProg, n);
       ['uPhoto', 'uMap', 'uAux', 'uLit', 'uPrev', 'uKinds', 'uSdf', 'uGold'].forEach((n, i) => gl.uniform1i(glU[n], i));
       glKinds = glassKinds();
       glc.addEventListener('webglcontextlost', (ev) => { ev.preventDefault(); gl = null; glFailed = true; });
@@ -2482,6 +2486,7 @@ void main() {
     glTexture(7, gm || glNoGold, true);
     const s = sunPos(P, o.t), [x0, y0, x1, y1] = P.win, k = P.h / 1200, rv = restView();
     gl.uniform2f(glU.uSize, P.w, P.h); gl.uniform2f(glU.uSun, s.x, s.y); gl.uniform4f(glU.uView, o.v[0], o.v[1], o.v[2], o.v[3]);
+    { const f = o.vFull || o.v; gl.uniform4f(glU.uFull, f[0], f[1], f[2], f[3]); }
     gl.uniform4f(glU.uWin, x0, y0, x1 - x0, y1 - y0);
     gl.uniform4f(glU.uGeo, WIN3D.top * k * rise, WIN3D.valley * k * rise, WIN3D.edge * k, WIN3D.sky * k);
     gl.uniform4f(glU.uRest, rv.tx, rv.ty, WIN3D.bend * k, WIN3D.lamp * k);
@@ -2568,7 +2573,7 @@ void main() {
     const s = Math.min(o.scale, 3, Math.max(2, Math.sqrt(1.6e6 / Math.max(1, dw * dh)))), glow = o.glow === undefined ? 1 : o.glow;
     // (a turned window, o.turn from showcase, is drawn over the whole of its box, the room round it too)
     const [bx0, by0, bw0, bh0] = o.turn ? o.turn.box : [dx, dy, dw, dh];
-    const gc = glassGL(P, { v, w: bw0 * s, h: bh0 * s, t, layer: o.layer, prev: o.prev, fade: o.fade, hintPart: o.hintPart, hintA: o.hintA, glint: o.glint, still: o.still, turn: o.turn });
+    const gc = glassGL(P, { v, vFull: o.vFull, w: bw0 * s, h: bh0 * s, t, layer: o.layer, prev: o.prev, fade: o.fade, hintPart: o.hintPart, hintA: o.hintA, glint: o.glint, still: o.still, turn: o.turn });
     // (with WebGL the gilded lead is drawn by the glass's own shader, in the same solid shape as the rest)
     if (gc) { drawGlass(g, gc, bx0, by0, bw0, bh0, glow); return gc; }
     let hint = null, hintAt = null;
@@ -2675,9 +2680,10 @@ void main() {
   }
   // With `lo`, the window re-fits its card when the fonts arrive or the screen turns.
   let cardRefit = null;
-  function showcase(cv, P, H0, state0, lo) {
+  // `zoom` (the picture view's picZoom): how far it is zoomed in, and on what (see picZoomStep).
+  function showcase(cv, P, H0, state0, lo, zoom) {
     const d = Math.min(window.devicePixelRatio || 1, 3), v = viewOf(P);
-    let Ws = 0, Hs = 0, Mx = 0, My = 0, last = -1e9;
+    let Ws = 0, Hs = 0, Mx = 0, My = 0, last = -1e9, vNow = v;
     // The canvas holds the window Ws x Hs in its middle and reaches Mx, My past it on each side (see .card.pic >
     // canvas.art): up to the card's gap less 2 px above and below, and short of the card's edge at the sides. With
     // reduced motion the window does not turn, so it needs no room.
@@ -2691,7 +2697,10 @@ void main() {
       cv.style.setProperty('--mx', `${Mx}px`); cv.style.setProperty('--my', `${My}px`);
     };
     size(H0);
-    const g = cv.getContext('2d'), t0 = now(), map = (p) => ({ x: ((p.x - v[0]) / v[2]) * Ws, y: ((p.y - v[1]) / v[3]) * Hs });
+    // (where the flat window lies in the canvas, CSS px, and the turn it was last drawn with, for a finger on it: see
+    // picBox and picUnderAt)
+    cv._box = () => ({ Mx, My, Ws, Hs, M: cv._turnM || null });
+    const g = cv.getContext('2d'), t0 = now(), map = (p) => ({ x: ((p.x - vNow[0]) / vNow[2]) * Ws, y: ((p.y - vNow[1]) / vNow[3]) * Hs });
     cardRefit = lo ? () => {
       if (!cv.isConnected || cv.closest('.overlay').hidden) return;
       const tr = cv.style.transform;
@@ -2703,11 +2712,13 @@ void main() {
     // middle) to where it is seen (canvas px from the canvas's middle, homogeneous: divide by the third). The glass's
     // shader is given the way back, from the canvas (0..1 across and down) to the window (0..1), so every pixel is drawn
     // sharp from the picture itself; warp takes a point of the flat window (canvas px) to the canvas, for what is
-    // drawn over the glass (the suns flying in land on their pieces however it is turned).
+    // drawn over the glass (the suns flying in land on their pieces however it is turned). `ts`: how much of the turn
+    // (all of it, unless zoomed in: a window zoomed in lies flat, so it holds still while it is looked at closely).
+    // (with `zoom` the window is drawn, turned or flat, from vNow, the part of it zoomed in on)
     let turned = null;
-    const turnNow = () => {
-      if (reduceMotion) return null;
-      const wl = winLean(), rx = (wl.y * WINTILT.turn[1] * Math.PI) / 180, ry = (-wl.x * WINTILT.turn[0] * Math.PI) / 180, cX = Math.cos(rx), sX = Math.sin(rx), cY = Math.cos(ry), sY = Math.sin(ry);
+    const turnNow = (ts) => {
+      if (reduceMotion || !(ts > 0.001)) return null;
+      const wl = winLean(), rx = (ts * wl.y * WINTILT.turn[1] * Math.PI) / 180, ry = (-ts * wl.x * WINTILT.turn[0] * Math.PI) / 180, cX = Math.cos(rx), sX = Math.sin(rx), cY = Math.cos(ry), sY = Math.sin(ry);
       const pd = (WINTILT.persp * (Ws + Hs)) / 2, Wc = Ws + 2 * Mx, Hc = Hs + 2 * My, w2 = Ws / 2, h2 = Hs / 2;
       let ex = 0, ey = 0;
       for (const [X, Y] of [[-w2, -h2], [w2, -h2], [-w2, h2], [w2, h2]]) {
@@ -2735,11 +2746,16 @@ void main() {
     const glintOf = (t) => { if (reduceMotion || !(t >= glint0)) return -1; const e = (t - glint0) % 7600; return e < 1500 ? e / 1500 : -1; };
     const paint = (t) => {
       const st = state0(t - t0);
+      // Zoomed in (the picture view): the part of the window that fills its place, drawn again from the picture at
+      // that size (with WebGL, as sharp as the picture allows; the flat painter scales it up).
+      if (zoom) picZoomStep(zoom, t);
+      const zz = zoom && zoom.z > 1.0005 ? zoom : null;
+      vNow = zz ? [v[0] + (zz.ux - 0.5 / zz.z) * v[2], v[1] + (zz.uy - 0.5 / zz.z) * v[3], v[2] / zz.z, v[3] / zz.z] : v;
       // A calm window repaints at half rate (and once, with reduced motion); the reveal runs at full rate.
-      // Whatever the rate, a change to the lit glass is always painted (and the window's shape once it is made); a
-      // slow change of view (the idle sway) waits for the next half-rate repaint, but a view turned by a finger or the
-      // phone is followed every frame.
-      const now_ = `${st.layer ? st.layer._v : ''}|${st.prev ? st.prev._v : ''}|${st.layer === P.all}|${P.sdf ? 1 : 0}`, vw_ = `${VIEW.tx.toFixed(2)},${VIEW.ty.toFixed(2)}`;
+      // Whatever the rate, a change to the lit glass is always painted (and the window's shape once it is made, and a
+      // change of zoom); a slow change of view (the idle sway) waits for the next half-rate repaint, but a view turned
+      // by a finger or the phone is followed every frame.
+      const now_ = `${st.layer ? st.layer._v : ''}|${st.prev ? st.prev._v : ''}|${st.layer === P.all}|${P.sdf ? 1 : 0}|${zz ? `${zz.z.toFixed(4)},${zz.ux.toFixed(5)},${zz.uy.toFixed(5)}` : ''}`, vw_ = `${VIEW.tx.toFixed(2)},${VIEW.ty.toFixed(2)}`;
       // (if painting every frame makes the frames come late, as on a slower phone, the turning view is followed at
       // the half rate for the rest of the card's time, like the calm window)
       if (prevT) dtAvg += (Math.min(100, t - prevT) - dtAvg) * 0.1;
@@ -2751,8 +2767,11 @@ void main() {
       last = t; shown = now_; shownV = vw_; paintTx = VIEW.tx; paintTy = VIEW.ty;
       g.setTransform(d, 0, 0, d, 0, 0);
       g.clearRect(0, 0, Ws + 2 * Mx, Hs + 2 * My);
-      turned = turnNow();
-      const gpu = paintGlass(g, P, v, Mx, My, Ws, Hs, t, { key: 'card', scale: d, layer: st.layer, prev: st.prev, fade: st.fade, hintPart: st.hintPart, hintA: st.hintA, glint: glintOf(t), turn: turned });
+      // (the turn fades out as the zoom starts, gone by 1.04 times, so the part drawn never shows as a turned
+      // panel cut out of the window; the turn now kept for a finger on it: picUnderAt)
+      turned = turnNow(zz ? Math.max(0, 1 - (zz.z - 1) / 0.04) : 1);
+      cv._turnM = turned ? turned.m : null;
+      const gpu = paintGlass(g, P, vNow, Mx, My, Ws, Hs, t, { key: 'card', scale: d, layer: st.layer, prev: st.prev, fade: st.fade, hintPart: st.hintPart, hintA: st.hintA, glint: glintOf(t), turn: turned, vFull: v });
       // What is drawn over the glass (the suns flying in) goes where the turned window shows it, and no further than
       // the window's own edges, as before the turn (without WebGL the window is drawn flat in its place).
       if (st.after) {
@@ -2875,12 +2894,173 @@ void main() {
     g.setTransform(d, 0, 0, d, 0, 0);
     paintGlass(g, P, v, 0, 0, Ws, Hs, 6000, { key: 'thumb', scale: d, layer: progressLayer(P), glow: 0.8, still: true });
   }
+  // Pinch zoom in the picture view: z (1, the whole window, up to PICZ_MAX) and the window point (0 to 1 across and
+  // down) shown in the middle of the window's place. Two fingers zoom about the point between them, and the glass under
+  // them stays under them: both on the window, or one of them beside it on the card (two fingers on the card's words,
+  // away from the window, are the card's). One finger moves a zoomed window round; on the whole window it turns it, as
+  // on the other cards (with reduced motion it scrolls the card). A double tap zooms in on that point, or back out to
+  // the whole window, and ctrl with the wheel zooms too (a trackpad's pinch in Chrome, Edge or Firefox; Safari on a Mac
+  // sends gesture events of its own, which the page turns away). Zoomed in, the window lies flat (see showcase) while
+  // its light still follows the lean. Each opening of the view starts on the whole window. (anim: a zoom on its way,
+  // from a double tap or a pinch let go near the whole window: from z0 to z1 over 240 ms, keeping window point u at s,
+  // 0 to 1 of the window's place.)
+  const PICZ_MAX = 2;
+  const picZoom = { z: 1, ux: 0.5, uy: 0.5, anim: null };
+  // The fingers down on the picture view's card (where each is now, and whether it came down on the window), the ones
+  // of them the zoom holds (they do not turn the window), and what they are doing.
+  const picPts = new Map(), picOwn = new Set();
+  let picPinch = null, picPan = null, picTap = null, picLastTap = null;
+  // Held to the window: never past the whole of it, nor further in than PICZ_MAX, nor off its edges.
+  function picClamp(Z) {
+    Z.z = Math.max(1, Math.min(PICZ_MAX, Z.z));
+    const h = 0.5 / Z.z;
+    Z.ux = Math.max(h, Math.min(1 - h, Z.ux)); Z.uy = Math.max(h, Math.min(1 - h, Z.uy));
+    // (zoomed in, a finger on it moves it, so it does not scroll the card, with reduced motion too)
+    $('picArt').style.touchAction = Z.z > 1.0005 ? 'none' : '';
+    return Z;
+  }
+  // The zoom set to z with window point u at s; on its way over 240 ms (at once with reduced motion).
+  function picZoomTo(z, u, s) {
+    if (reduceMotion) { picZoom.anim = null; picZoom.z = z; picZoom.ux = u.x - (s.x - 0.5) / z; picZoom.uy = u.y - (s.y - 0.5) / z; picClamp(picZoom); return; }
+    picZoom.anim = { t0: now(), z0: picZoom.z, z1: z, u, s };
+  }
+  function picZoomStep(Z, t) {
+    const a = Z.anim;
+    if (!a) return;
+    const q = Math.max(0, Math.min(1, (t - a.t0) / 240)), e = q * q * (3 - 2 * q);
+    Z.z = a.z0 * Math.pow(a.z1 / a.z0, e);
+    Z.ux = a.u.x - (a.s.x - 0.5) / Z.z; Z.uy = a.u.y - (a.s.y - 0.5) / Z.z;
+    picClamp(Z);
+    if (q >= 1) Z.anim = null;
+  }
+  function picZoomReset() {
+    picZoom.z = 1; picZoom.ux = picZoom.uy = 0.5; picZoom.anim = null;
+    picPts.clear(); picOwn.clear(); picPinch = picPan = picTap = picLastTap = null;
+    $('picArt').style.touchAction = '';
+  }
+  // The flat window's place on screen (CSS px), a client point in it (0 to 1 across and down), and the window point
+  // seen there at the zoom now, flat.
+  function picBox() {
+    const art = $('picArt'), b = art._box ? art._box() : null;
+    if (!b || !(b.Ws > 0) || !(b.Hs > 0)) return null;
+    const r = art.getBoundingClientRect();
+    return { x: r.left + b.Mx, y: r.top + b.My, w: b.Ws, h: b.Hs };
+  }
+  const picAt = (b, x, y) => ({ x: (x - b.x) / b.w, y: (y - b.y) / b.h });
+  const picUnder = (s) => ({ x: picZoom.ux + (s.x - 0.5) / picZoom.z, y: picZoom.uy + (s.y - 0.5) / picZoom.z });
+  // The window point under a finger (client px) as the window was last drawn: through its turn while it has one (on
+  // the whole window, or barely zoomed in), so a double tap or a pinch zooms on the glass that was under the finger.
+  function picUnderAt(x, y) {
+    const art = $('picArt'), b = art._box ? art._box() : null;
+    if (!b || !(b.Ws > 0) || !(b.Hs > 0)) return null;
+    const r = art.getBoundingClientRect();
+    let s;
+    if (b.M) {
+      const M = b.M, cu = (x - r.left) / (b.Ws + 2 * b.Mx), cv = (y - r.top) / (b.Hs + 2 * b.My), w = M[6] * cu + M[7] * cv + M[8];
+      s = { x: (M[0] * cu + M[1] * cv + M[2]) / w, y: (M[3] * cu + M[4] * cv + M[5]) / w };
+    } else s = { x: (x - r.left - b.Mx) / b.Ws, y: (y - r.top - b.My) / b.Hs };
+    return picUnder(s);
+  }
+  // (a zoom on its way stops where it is when a finger comes down, but one back out to the whole window finishes, so
+  // that finger turns the window rather than moving a window still zoomed in a hair)
+  const picHold = () => { const a = picZoom.anim; if (a) { picZoomStep(picZoom, a.z1 <= 1 ? Infinity : now()); picZoom.anim = null; } };
+  // (a pinch carries on from the first two fingers as they are now: when it starts, and when a finger joins or leaves)
+  function picPinchFrom() {
+    const b = picBox(), [p, q] = [...picPts.values()];
+    if (!b || !q) return;
+    const mx = (p.x + q.x) / 2, my = (p.y + q.y) / 2;
+    picPinch = { d0: Math.max(12, Math.hypot(p.x - q.x, p.y - q.y)), z0: picZoom.z, u: picUnderAt(mx, my) || picUnder(picAt(b, mx, my)) };
+  }
+  function picTake(id) { picOwn.add(id); try { $('picArt').setPointerCapture(id); } catch (err) { /* capture unsupported */ } }
+  // A finger down anywhere on the picture view's card, seen before the window's own handlers (which leave the fingers
+  // the zoom holds alone); its moves and its lifting are followed wherever it goes.
+  function picZoomDown(e) {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const onArt = e.target === $('picArt');
+    picPts.set(e.pointerId, { x: e.clientX, y: e.clientY, onArt });
+    picHold();
+    if (picPts.size >= 2) {
+      const b = picBox(), [p, q] = [...picPts.values()];
+      if (!b) return;
+      const s = picAt(b, (p.x + q.x) / 2, (p.y + q.y) / 2);
+      if (!picPinch && !p.onArt && !q.onArt && !(s.x >= 0 && s.x <= 1 && s.y >= 0 && s.y <= 1)) return;
+      // (a finger that was turning the window lets go of it: the window glides back to rest as it is zoomed)
+      if (TL.look) TL.look = null;
+      for (const id of picPts.keys()) picTake(id);
+      picPinchFrom();
+      picPan = picTap = picLastTap = null;
+      return;
+    }
+    if (!onArt) return;
+    const t = now(), again = !!picLastTap && t - picLastTap.t < 300 && Math.hypot(e.clientX - picLastTap.x, e.clientY - picLastTap.y) < 60;
+    picTap = { id: e.pointerId, x: e.clientX, y: e.clientY, t, again };
+    if (picZoom.z > 1.0005) { picTake(e.pointerId); picPan = { id: e.pointerId, x0: e.clientX, y0: e.clientY, ux: picZoom.ux, uy: picZoom.uy }; }
+  }
+  function picZoomMove(e) {
+    const f = picPts.get(e.pointerId);
+    if (!f) return;
+    f.x = e.clientX; f.y = e.clientY;
+    if (picTap && picTap.id === e.pointerId && Math.hypot(e.clientX - picTap.x, e.clientY - picTap.y) > 9) picTap = null;
+    if (!picOwn.has(e.pointerId)) return;
+    const b = picBox();
+    if (!b) return;
+    if (picPinch && picPts.size >= 2) {
+      const [p, q] = [...picPts.values()], m = picAt(b, (p.x + q.x) / 2, (p.y + q.y) / 2);
+      const z = Math.max(1, Math.min(PICZ_MAX, (picPinch.z0 * Math.hypot(p.x - q.x, p.y - q.y)) / picPinch.d0));
+      picZoom.z = z; picZoom.ux = picPinch.u.x - (m.x - 0.5) / z; picZoom.uy = picPinch.u.y - (m.y - 0.5) / z;
+      picClamp(picZoom); TL.touch = now();
+    } else if (picPan && picPan.id === e.pointerId) {
+      picZoom.ux = picPan.ux - (e.clientX - picPan.x0) / (b.w * picZoom.z);
+      picZoom.uy = picPan.uy - (e.clientY - picPan.y0) / (b.h * picZoom.z);
+      picClamp(picZoom); TL.touch = now();
+    }
+  }
+  function picZoomUp(e) {
+    if (!picPts.has(e.pointerId)) return;
+    picPts.delete(e.pointerId); picOwn.delete(e.pointerId);
+    const t = now();
+    if (picTap && picTap.id === e.pointerId) {
+      // a tap (short, and still); a second soon after it, and near it, zooms in there or back out to the whole window
+      if (e.type === 'pointerup' && t - picTap.t < 300) {
+        if (picTap.again) { picLastTap = null; picDoubleTap(picTap.x, picTap.y); }
+        else picLastTap = { x: picTap.x, y: picTap.y, t };
+      }
+      picTap = null;
+    }
+    if (picPan && picPan.id === e.pointerId) picPan = null;
+    if (picPinch) {
+      if (picPts.size >= 2) picPinchFrom();
+      else {
+        picPinch = null;
+        // a pinch let go very near the whole window goes the rest of the way; a finger left on a zoomed window moves it
+        if (picZoom.z < 1.04) picZoomTo(1, { x: picZoom.ux, y: picZoom.uy }, { x: 0.5, y: 0.5 });
+        else for (const [id, p] of picPts) if (picOwn.has(id)) picPan = { id, x0: p.x, y0: p.y, ux: picZoom.ux, uy: picZoom.uy };
+      }
+    }
+  }
+  function picDoubleTap(x, y) {
+    const b = picBox();
+    if (!b) return;
+    if (picZoom.z > 1.0005) picZoomTo(1, { x: picZoom.ux, y: picZoom.uy }, { x: 0.5, y: 0.5 });
+    else { const s = picAt(b, x, y); picZoomTo(PICZ_MAX, picUnderAt(x, y) || picUnder(s), s); }
+  }
+  function picWheel(e) {
+    if (!e.ctrlKey) return; // (a plain wheel scrolls the card)
+    e.preventDefault();
+    const b = picBox();
+    if (!b) return;
+    picHold();
+    const s = picAt(b, e.clientX, e.clientY), u = picUnderAt(e.clientX, e.clientY) || picUnder(s), z = Math.max(1, Math.min(PICZ_MAX, picZoom.z * Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.01)));
+    picZoom.z = z; picZoom.ux = u.x - (s.x - 0.5) / z; picZoom.uy = u.y - (s.y - 0.5) / z;
+    picClamp(picZoom);
+  }
   // The picture view, opened from the map.
   let viewPic = null;
   function showPictureView(P) {
     if (!ensureBuilt(P)) return;
     hideOverlays();
     viewPic = P;
+    picZoomReset();
     const got = litParts(P), E = P.elements.length;
     $('picKicker').textContent = `Window ${WINDOWS.indexOf(P) + 1} of ${WINDOWS.length}`;
     $('picTitle').textContent = P.name;
@@ -2889,7 +3069,7 @@ void main() {
       : got ? `<b>${got} of ${E}</b> parts are lit. Levels ${P.first}–${P.first + E - 1} light the rest.` : `No glass yet. Levels ${P.first}–${P.first + E - 1} set it back.`;
     $('picSave').hidden = !got;
     $('picOverlay').hidden = false;
-    showcase($('picArt'), P, artHeight($('picArt'), P, 240), () => ({ layer: progressLayer(P) }), 240);
+    showcase($('picArt'), P, artHeight($('picArt'), P, 240), () => ({ layer: progressLayer(P) }), 240, picZoom);
     $('picClose').focus();
   }
   // ---------- Sharing a window ----------
@@ -8192,16 +8372,25 @@ void main() {
   const lookEnd = (e) => { if (TL.look && e.pointerId === TL.look.id) TL.look = null; };
   for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, lookEnd);
   // A finger on a card's window (the win card, the picture view, a chapter's first card) turns that window to the light
-  // the same way; a full lean is about a third of the picture's width away.
+  // the same way; a full lean is about a third of the picture's width away. In the picture view two fingers zoom it,
+  // and one finger moves it round once it is zoomed in (see picZoom).
   for (const art of ['wonArt', 'picArt', 'introArt'].map($)) {
+    const zooms = art.id === 'picArt';
     art.addEventListener('pointerdown', (e) => {
+      if (zooms && picOwn.has(e.pointerId)) return;
       if (TL.look || reduceMotion) return;
       TL.look = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, k: Math.max(70, art.clientWidth * 0.35) };
       try { art.setPointerCapture(e.pointerId); } catch (err) { /* capture unsupported */ }
     });
     art.addEventListener('pointermove', (e) => { if (TL.look && e.pointerId === TL.look.id) { TL.look.x = e.clientX; TL.look.y = e.clientY; } });
     for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) art.addEventListener(type, lookEnd);
+    if (zooms) art.addEventListener('wheel', picWheel, { passive: false });
   }
+  // (the zoom sees every finger that comes down on the picture view's card before the window does, and follows it
+  // wherever it goes: see picZoomDown)
+  $('picArt').closest('.card').addEventListener('pointerdown', picZoomDown, true);
+  document.addEventListener('pointermove', picZoomMove, true);
+  for (const type of ['pointerup', 'pointercancel']) document.addEventListener(type, picZoomUp, true);
   tiltStart();
 
   if (window.ResizeObserver) new ResizeObserver(() => layout()).observe(wrap);
